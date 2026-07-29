@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Trader — Paper Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #131820;
+    --border: #1e2736;
+    --text: #c8d1d9;
+    --text-dim: #6b7280;
+    --green: #10b981;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --amber: #f59e0b;
+    --purple: #8b5cf6;
+    --cyan: #06b6d4;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  
+  /* Header */
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 0; border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+  header h1 span { color: var(--cyan); }
+  .status { display: flex; gap: 16px; align-items: center; font-size: 13px; color: var(--text-dim); }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot.live { background: var(--green); animation: pulse 2s infinite; }
+  .dot.paper { background: var(--amber); }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+
+  /* Metric cards */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card .label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px; }
+  .card .value { font-size: 24px; font-weight: 700; }
+  .card .sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .value.positive { color: var(--green); }
+  .value.negative { color: var(--red); }
+  .value.neutral { color: var(--cyan); }
+
+  /* Tables */
+  .section { margin-bottom: 32px; }
+  .section h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text); letter-spacing: -0.3px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-dim);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.buy { background: rgba(16,185,129,0.15); color: var(--green); }
+  .badge.sell { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge.open { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge.filled { background: rgba(139,92,246,0.15); color: var(--purple); }
+  .badge.settled { background: rgba(107,114,128,0.2); color: var(--text-dim); }
+  
+  /* Charts */
+  .chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .chart-container canvas { max-height: 300px; }
+
+  /* Grid layout */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px; }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-dim);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>weather<span>-trader</span></h1>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">Paper Trading Dashboard</div>
+    </div>
+    <div class="status">
+      <span><span class="dot live"></span> Live</span>
+      <span><span class="dot paper"></span> Paper Mode</span>
+      <span id="updated">Loading...</span>
+    </div>
+  </header>
+
+  <!-- Metric Cards -->
+  <div class="metrics" id="metrics"></div>
+
+  <!-- Charts -->
+  <div class="grid-2">
+    <div class="chart-container">
+      <h2 style="margin-bottom:12px">P&L History</h2>
+      <canvas id="pnlChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h2 style="margin-bottom:12px">Calibration</h2>
+      <canvas id="calChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Positions -->
+  <div class="section">
+    <h2>Active Positions</h2>
+    <table id="positions-table">
+      <thead><tr><th>Market</th><th>Direction</th><th>Qty</th><th>Price</th><th>Status</th><th>P&L</th><th>Placed</th></tr></thead>
+      <tbody id="positions-body"></tbody>
+    </table>
+    <div class="empty" id="positions-empty">No positions yet — model evaluating...</div>
+  </div>
+
+  <footer>
+    Weather Trader Paper Dashboard · Read-only production key · No real orders placed
+  </footer>
+</div>
+
+<script>
+async function load() {
+  try {
+    const SUPABASE_URL = 'https://ggeqkbroymsntrcvpetg.supabase.co';
+    const ANON_KEY = 'sb_publishable_7XqDf_2fTlFeHsJ2kTL8zA_mTWKprjt';
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/dashboard_state?id=eq.1&select=data`,
+      { headers: { apikey: ANON_KEY } }
+    );
+    const rows = await resp.json();
+    if (rows && rows[0] && rows[0].data) {
+      render(rows[0].data);
+    }
+  } catch(e) {
+    document.getElementById('updated').textContent = 'Waiting for data...';
+  }
+}
+
+function render(data) {
+  document.getElementById('updated').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
+
+  // Metrics
+  const s = data.summary || {};
+  const metrics = [
+    { label: 'Total Orders', value: s.total_orders || 0, sub: 'hypothetical', cls: 'neutral' },
+    { label: 'Fill Rate', value: ((s.fill_rate || 0) * 100).toFixed(1) + '%', sub: 'simulated fills', cls: 'neutral' },
+    { label: 'Realized P&L', value: '$' + (s.total_pnl_usd || 0).toFixed(2), sub: 'settled positions', cls: (s.total_pnl_usd || 0) >= 0 ? 'positive' : 'negative' },
+    { label: 'Deployed', value: '$' + (s.deployed_usd || 0).toFixed(2), sub: 'active capital', cls: 'neutral' },
+    { label: 'Win Rate', value: s.win_rate ? (s.win_rate * 100).toFixed(1) + '%' : '—', sub: 'settled trades', cls: 'neutral' },
+    { label: 'Open Pos', value: s.open || 0, sub: 'unfilled orders', cls: 'neutral' },
+  ];
+  if (data.brier) {
+    metrics.push({ label: 'Brier Skill', value: (data.brier.skill >= 0 ? '+' : '') + (data.brier.skill * 100).toFixed(1) + '%', sub: `n=${data.brier.n}`, cls: data.brier.skill >= 0.02 ? 'positive' : 'negative' });
+  }
+  document.getElementById('metrics').innerHTML = metrics.map(m =>
+    `<div class="card">
+      <div class="label">${m.label}</div>
+      <div class="value ${m.cls}">${m.value}</div>
+      <div class="sub">${m.sub}</div>
+    </div>`
+  ).join('');
+
+  // Positions table
+  const positions = data.positions || [];
+  const active = positions.filter(p => !p.settled);
+  const settled = positions.filter(p => p.settled);
+  
+  if (positions.length === 0) {
+    document.getElementById('positions-empty').style.display = 'block';
+    document.getElementById('positions-table').style.display = 'none';
+  } else {
+    document.getElementById('positions-empty').style.display = 'none';
+    
+    const all = [...active, ...settled];
+    document.getElementById('positions-body').innerHTML = all.map(p => {
+      const isBuy = p.side === 'bid';
+      const dir = isBuy ? 'BUY YES' : 'SELL YES';
+      const dirCls = isBuy ? 'buy' : 'sell';
+      const statusCls = p.settled ? 'settled' : (p.filled ? 'filled' : 'open');
+      const status = p.settled ? 'SETTLED' : (p.filled ? 'FILLED' : 'OPEN');
+      const pnl = p.settled_pnl != null ? `$${p.settled_pnl.toFixed(2)}` : '—';
+      const pnlCls = (p.settled_pnl || 0) >= 0 ? 'positive' : 'negative';
+      const placed = new Date(p.placed_at).toLocaleDateString();
+      return `<tr>
+        <td style="font-weight:500">${p.market_ticker}</td>
+        <td><span class="badge ${dirCls}">${dir}</span></td>
+        <td>${p.contracts}</td>
+        <td>$${p.price.toFixed(4)}</td>
+        <td><span class="badge ${statusCls}">${status}</span></td>
+        <td class="${pnlCls}" style="font-weight:600">${pnl}</td>
+        <td style="color:var(--text-dim)">${placed}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // P&L Chart
+  const pnlData = data.pnl_history || [];
+  if (pnlData.length > 0) {
+    new Chart(document.getElementById('pnlChart'), {
+      type: 'line',
+      data: {
+        labels: pnlData.map(d => new Date(d.time).toLocaleDateString()),
+        datasets: [{
+          label: 'Cumulative Deployed',
+          data: pnlData.map(d => d.cumulative),
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#6b7280', maxTicksLimit: 8 }, grid: { color: '#1e2736' } },
+          y: { ticks: { color: '#6b7280', callback: v => '$' + v }, grid: { color: '#1e2736' } }
+        }
+      }
+    });
+  }
+
+  // Calibration chart
+  const cal = data.calibration || [];
+  if (cal.length > 0) {
+    // Bin by model probability
+    const bins = Array.from({length: 10}, (_, i) => ({pred: (i+0.5)/10, obs: 0, n: 0}));
+    cal.forEach(c => {
+      const bin = Math.min(Math.floor(c.model_p * 10), 9);
+      bins[bin].obs += c.outcome;
+      bins[bin].n += 1;
+    });
+    const binData = bins.filter(b => b.n > 0).map(b => ({
+      pred: b.pred, obs: b.obs / b.n, n: b.n
+    }));
+
+    new Chart(document.getElementById('calChart'), {
+      type: 'scatter',
+      data: {
+        datasets: [
+          { label: 'Perfect', data: [{x:0,y:0},{x:1,y:1}], borderColor: '#1e2736', borderDash: [4,4], pointRadius: 0, showLine: true },
+          {
+            label: 'Model',
+            data: binData.map(b => ({x: b.pred, y: b.obs})),
+            backgroundColor: '#3b82f6',
+            borderColor: '#3b82f6',
+            pointRadius: binData.map(b => Math.sqrt(b.n) * 2),
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `Pred: ${(ctx.raw.x*100).toFixed(0)}% Obs: ${(ctx.raw.y*100).toFixed(0)}%` } }
+        },
+        scales: {
+          x: { min:0, max:1, ticks: { color:'#6b7280', callback: v=>Math.round(v*100)+'%' }, grid:{color:'#1e2736'} },
+          y: { min:0, max:1, ticks: { color:'#6b7280', callback: v=>Math.round(v*100)+'%' }, grid:{color:'#1e2736'} }
+        }
+      }
+    });
+  }
+}
+
+load();
+setInterval(load, 60000); // Refresh every minute
+</script>
+</body>
+</html>

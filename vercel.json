@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "buildCommand": "mkdir -p .vercel/output/static && cp index.html .vercel/output/static/",
+  "outputDirectory": ".vercel/output/static",
+  "cleanUrls": true
+}
