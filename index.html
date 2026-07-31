@@ -206,13 +206,15 @@ function render(data) {
   const depEl = document.getElementById('deploy');
   if (dep) {
     const off = dep.branch && dep.branch !== 'main';
+    const bad = off || dep.dirty;   // untracked files alone are NOT an alarm
     const parts = [`${dep.branch || '?'}@${dep.commit || '?'}`, `gen ${dep.generation || '?'}`];
     if (dep.dirty) parts.push('UNCOMMITTED');
     depEl.textContent = parts.join(' · ');
-    depEl.style.color = (off || dep.dirty) ? 'var(--red)' : '';
-    depEl.title = (off || dep.dirty)
+    depEl.style.color = bad ? 'var(--red)' : '';
+    depEl.title = (bad
       ? 'This cycle did NOT come from a clean main checkout'
-      : 'Code and parameters that produced this cycle';
+      : 'Code and parameters that produced this cycle')
+      + (dep.untracked ? ` — ${dep.untracked} untracked file(s) present` : '');
   } else {
     depEl.textContent = 'no deploy info';
   }
