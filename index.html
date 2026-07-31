@@ -236,7 +236,7 @@
       </p>
       <div class="scroll-x">
         <table id="accuracy-table">
-          <thead><tr><th>Station</th><th>Source</th><th class="num">Bias &deg;F</th><th class="num">MAE</th><th class="num">n days</th></tr></thead>
+          <thead><tr><th>Station</th><th>Source</th><th class="num">Bias &deg;F</th><th class="num">MAE</th><th class="num">mean fc</th><th class="num">mean obs</th><th class="num">window</th><th class="num">n days</th></tr></thead>
           <tbody id="accuracy-body"></tbody>
         </table>
       </div>
@@ -501,11 +501,19 @@ function renderAccuracy(rows) {
     const tag = retired
       ? ' <span class="badge settled" title="No longer blended for this station — kept as history">retired</span>'
       : '';
+    // Both sides of the subtraction, so a bias can be sanity-checked against
+    // the numbers it came from rather than taken on faith.
+    const f = r.mean_forecast, o = r.mean_observed;
+    const window = r.first_day && r.last_day
+      ? `${r.first_day.slice(5)}–${r.last_day.slice(5)}` : '—';
     return `<tr${retired ? ' style="opacity:.55"' : ''}>
       <td style="font-weight:500">${r.station}</td>
       <td class="dim" style="font-size:12px">${r.source.replace('_ens', '')}${tag}</td>
       <td class="num ${cls}" style="font-weight:600">${r.bias >= 0 ? '+' : ''}${r.bias.toFixed(2)}</td>
       <td class="num dim">${r.mae.toFixed(2)}</td>
+      <td class="num dim">${f != null ? f.toFixed(1) : '—'}</td>
+      <td class="num dim">${o != null ? o.toFixed(1) : '—'}</td>
+      <td class="num dim" style="font-size:12px">${window}</td>
       <td class="num dim">${r.n}</td>
     </tr>`;
   }).join('');
