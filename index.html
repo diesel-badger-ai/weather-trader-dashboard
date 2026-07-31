@@ -193,6 +193,17 @@
   <!-- Cycle health, shown on every page: this describes the RUN, not the model. -->
   <div class="metrics" id="metrics"></div>
 
+  <!-- What failed. A degraded status with no reason attached is barely better
+       than no status at all — the reasons used to go only to stderr. -->
+  <div class="section" id="failures-section" hidden>
+    <h2 class="bad">Cycle failures</h2>
+    <p class="note">
+      These steps did not complete this run. The rest of the cycle continued, so
+      the numbers below are from a partial cycle.
+    </p>
+    <ul id="failures"></ul>
+  </div>
+
   <!-- The pages follow the order the questions have to be answered in. A model
        that is not roughly right cannot be calibrated, an uncalibrated model
        cannot be trusted to price an edge, and an edge that never filled was
@@ -450,9 +461,19 @@ function render(data) {
     { label: 'Would Trade', value: takes ? takes.n : 0, sub: `clear min edge ${m.min_net_edge ?? '?'}` },
     { label: 'Stations', value: `${cov.stations_reporting ?? '—'}/${cov.stations_configured ?? '—'}`, sub: 'reporting',
       cls: cov.stations_reporting === cov.stations_configured ? 'positive' : 'negative' },
-    { label: 'Cycle', value: (data.status || '?').toUpperCase(), sub: 'last run',
+    { label: 'Cycle', value: (data.status || '?').toUpperCase(),
+      sub: data.failure_count ? `${data.failure_count} failure(s)` : 'last run',
       cls: data.status === 'ok' ? 'positive' : 'negative' },
   ].map(card).join('');
+
+  const failures = data.failures || [];
+  const fsec = document.getElementById('failures-section');
+  fsec.hidden = failures.length === 0;
+  const shown = failures.length;
+  const total = data.failure_count != null ? data.failure_count : shown;
+  document.getElementById('failures').innerHTML =
+    failures.map(f => `<li class="dim">${f}</li>`).join('') +
+    (total > shown ? `<li class="dim">…and ${total - shown} more</li>` : '');
 
   renderAccuracy(m.forecast_accuracy || []);
   renderStations(m.stations || []);
