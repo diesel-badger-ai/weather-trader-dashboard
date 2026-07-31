@@ -143,6 +143,7 @@
       <span><span class="dot live"></span> Live</span>
       <span><span class="dot paper"></span> Paper Mode</span>
       <span id="updated">Loading...</span>
+      <span id="deploy" title="Code and parameters that produced this cycle"></span>
     </div>
   </header>
 
@@ -196,6 +197,25 @@ async function load() {
 
 function render(data) {
   document.getElementById('updated').textContent = 'Updated ' + new Date(data.updated_at).toLocaleString();
+
+  // Deploy provenance. A cycle can report status:ok while running stale code —
+  // that happened on 2026-07-31 and was invisible for hours because nothing
+  // published which commit produced the numbers. Anything other than a clean
+  // main checkout is called out in red rather than shown as a neutral label.
+  const dep = data.deploy;
+  const depEl = document.getElementById('deploy');
+  if (dep) {
+    const off = dep.branch && dep.branch !== 'main';
+    const parts = [`${dep.branch || '?'}@${dep.commit || '?'}`, `gen ${dep.generation || '?'}`];
+    if (dep.dirty) parts.push('UNCOMMITTED');
+    depEl.textContent = parts.join(' · ');
+    depEl.style.color = (off || dep.dirty) ? 'var(--red)' : '';
+    depEl.title = (off || dep.dirty)
+      ? 'This cycle did NOT come from a clean main checkout'
+      : 'Code and parameters that produced this cycle';
+  } else {
+    depEl.textContent = 'no deploy info';
+  }
 
   // Metrics
     const s = data.summary || {};
