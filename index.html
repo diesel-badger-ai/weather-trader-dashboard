@@ -583,7 +583,11 @@ function renderEdge(m, shadow) {
   const pnl = shadow.pnl_per_contract;
   document.getElementById('shadow-metrics').innerHTML = [
     { label: 'Takes', value: shadow.n_takes ?? '—', sub: 'markets the model wanted' },
-    { label: 'Fill Rate', value: fmtPct(shadow.fill_rate), sub: `${shadow.n_filled ?? 0} filled, simulated` },
+    // The denominator is stated because it is NOT the take count: a take with
+    // no later book stored cannot be observed either way, and counting those as
+    // non-fills drags the rate toward zero as history accumulates.
+    { label: 'Fill Rate', value: fmtPct(shadow.fill_rate),
+      sub: `${shadow.n_filled ?? 0} of ${shadow.n_evaluable ?? 0} observable` },
     { label: 'Settled', value: shadow.n_settled ?? 0, sub: 'have an outcome' },
     { label: 'Realised', value: fmtCents(pnl), sub: 'per contract, net of fees',
       cls: pnl == null ? 'neutral' : (pnl >= 0 ? 'positive' : 'negative') },
