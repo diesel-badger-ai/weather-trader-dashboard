@@ -121,6 +121,26 @@
 
   .empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px; }
 
+  /* Model diagnostics. The P&L half of this page is near-empty while the model
+     is being tuned — a handful of orders a cycle against 84 evaluated markets —
+     so the evaluation itself leads and the book follows. */
+  .section .note { font-size: 12px; color: var(--text-dim); margin: -6px 0 12px; max-width: 90ch; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .dim { color: var(--text-dim); }
+  .warn { color: var(--amber); }
+  .bad { color: var(--red); }
+  .ok { color: var(--green); }
+
+  /* Horizontal bars for the decision breakdown — a chart library would be
+     overkill for one categorical count. */
+  .bars { display: grid; grid-template-columns: minmax(140px,auto) 1fr minmax(52px,auto); gap: 6px 12px; align-items: center; font-size: 13px; }
+  .bars .track { background: var(--border); border-radius: 3px; height: 16px; overflow: hidden; }
+  .bars .fill { height: 100%; border-radius: 3px; background: var(--blue); }
+  .bars .fill.take { background: var(--green); }
+
+  .scroll-x { overflow-x: auto; }
+  .scroll-x table { min-width: 760px; }
+
   /* Footer */
   footer {
     text-align: center;
@@ -150,6 +170,55 @@
   <!-- Metric Cards -->
   <div class="metrics" id="metrics"></div>
 
+  <!-- Model vs market, per station -->
+  <div class="section">
+    <h2>Model vs Market — this cycle</h2>
+    <p class="note">
+      Where the model sits for each station's local day, and how far it is from the
+      book. <strong>Spread</strong> is the gap between the station's own forecast
+      sources: a large one means they are describing different places, which is how
+      the LAX grid-cell error stayed invisible for months. <strong>Divergence</strong>
+      is mean |model p − market p| across the ladder — disagreement, not edge.
+    </p>
+    <div class="scroll-x">
+      <table id="stations-table">
+        <thead><tr>
+          <th>City</th><th>Date</th><th class="num">Model °F</th><th class="num">σ</th>
+          <th class="num">Lead</th><th>Sources</th><th class="num">Spread</th>
+          <th class="num">Diverge</th><th class="num">Takes</th><th class="num">Best edge</th>
+        </tr></thead>
+        <tbody id="stations-body"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="stations-empty">No forecasts yet this cycle.</div>
+  </div>
+
+  <!-- Why the cycle traded, or did not -->
+  <div class="grid-2">
+    <div class="chart-container">
+      <h2 style="margin-bottom:6px">Why markets were skipped</h2>
+      <p class="note">Every market the model looked at this cycle, by the gate that stopped it.</p>
+      <div class="bars" id="decisions"></div>
+      <div class="empty" id="decisions-empty">No evaluation recorded yet.</div>
+    </div>
+    <div class="chart-container">
+      <h2 style="margin-bottom:6px">Forecast accuracy — °F vs NWS</h2>
+      <p class="note">
+        Signed bias per station and source, one sample per target day. This is the
+        table that makes a mis-placed grid cell obvious within days.
+      </p>
+      <div class="scroll-x">
+        <table id="accuracy-table">
+          <thead><tr><th>Station</th><th>Source</th><th class="num">Bias</th><th class="num">MAE</th><th class="num">n</th></tr></thead>
+          <tbody id="accuracy-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="accuracy-empty">
+        No settled days yet — needs a forecast and its observation for the same day.
+      </div>
+    </div>
+  </div>
+
   <!-- Charts -->
   <div class="grid-2">
     <div class="chart-container">
@@ -170,6 +239,17 @@
           <tbody id="positions-body"></tbody>
     </table>
     <div class="empty" id="positions-empty">No positions yet — model evaluating...</div>
+  </div>
+
+  <!-- Coverage: is the calibration record actually filling up? -->
+  <div class="section">
+    <h2>Record coverage</h2>
+    <p class="note">
+      The go/no-go gate runs on prediction ⨝ resolution, so what matters while
+      tuning is how fast this fills. Lead buckets show which σ cells can ever
+      calibrate — a bucket with no rows will never reach the sample floor.
+    </p>
+    <div class="metrics" id="coverage"></div>
   </div>
 
   <footer>
@@ -219,17 +299,102 @@ function render(data) {
     depEl.textContent = 'no deploy info';
   }
 
-  // Metrics
-    const s = data.summary || {};
-    document.getElementById('metrics').innerHTML = [
-    { label: 'Deployed Capital', value: '$' + (s.total_invested || 0).toFixed(2), sub: 'active positions', cls: 'neutral' },
-    { label: 'Deployed Cost', value: '$' + (s.total_cost || 0).toFixed(2), sub: 'active incl. fees', cls: 'neutral' },
-    { label: 'Total Orders', value: s.total_orders || 0, sub: 'hypothetical', cls: 'neutral' },
-    { label: 'Realized P&L', value: '$' + (s.total_pnl_usd || 0).toFixed(2), sub: 'settled', cls: (s.total_pnl_usd || 0) >= 0 ? 'positive' : 'negative' },
-    { label: 'Win Rate', value: s.win_rate ? (s.win_rate * 100).toFixed(1) + '%' : '—', sub: 'settled trades', cls: 'neutral' },
-  ].concat(data.brier ? [{ label: 'Brier Skill', value: (data.brier.skill >= 0 ? '+' : '') + (data.brier.skill * 100).toFixed(1) + '%', sub: `n=${data.brier.n}`, cls: data.brier.skill >= 0.02 ? 'positive' : 'negative' }] : [])
-    .map(m => `<div class="card"><div class="label">${m.label}</div><div class="value ${m.cls}">${m.value}</div><div class="sub">${m.sub}</div></div>`).join('');
+  // Metrics. Model activity leads: with max_open_positions orders a cycle the
+  // P&L figures barely move while the model is being tuned, so a page fronted
+  // by them looks idle even on a cycle that evaluated 84 markets.
+  const s = data.summary || {};
+  const m = data.model || {};
+  const cov = m.coverage || {};
+  const card = c => `<div class="card"><div class="label">${c.label}</div><div class="value ${c.cls}">${c.value}</div><div class="sub">${c.sub}</div></div>`;
+  const takes = (m.decisions || []).find(d => d.reason === 'take');
+  const stationsOk = cov.stations_reporting === cov.stations_configured;
+  document.getElementById('metrics').innerHTML = [
+    { label: 'Evaluated', value: m.evaluated_last_cycle ?? '—', sub: 'markets this cycle', cls: 'neutral' },
+    { label: 'Would Trade', value: takes ? takes.n : 0, sub: `clear min edge ${m.min_net_edge ?? '?'}`, cls: 'neutral' },
+    { label: 'Stations', value: `${cov.stations_reporting ?? '—'}/${cov.stations_configured ?? '—'}`, sub: 'reporting', cls: stationsOk ? 'positive' : 'negative' },
+    { label: 'Orders', value: s.total_orders || 0, sub: `${s.filled_open || 0} live · ${s.settled || 0} settled`, cls: 'neutral' },
+    { label: 'Realized P&L', value: '$' + (s.total_pnl_usd || 0).toFixed(2), sub: `win rate ${s.win_rate ? (s.win_rate * 100).toFixed(0) + '%' : '—'}`, cls: (s.total_pnl_usd || 0) >= 0 ? 'positive' : 'negative' },
+  ].concat(data.brier
+      ? [{ label: 'Brier Skill', value: (data.brier.skill >= 0 ? '+' : '') + (data.brier.skill * 100).toFixed(1) + '%', sub: `n=${data.brier.n} vs market`, cls: data.brier.skill >= 0.02 ? 'positive' : 'negative' }]
+      : [{ label: 'Brier Skill', value: '—', sub: 'no settled predictions yet', cls: 'neutral' }])
+    .map(card).join('');
 
+  renderStations(m.stations || []);
+  renderDecisions(m.decisions || [], m.evaluated_last_cycle || 0);
+  renderAccuracy(m.forecast_accuracy || []);
+  renderBook(data);
+
+  document.getElementById('coverage').innerHTML = [
+    { label: 'Predictions', value: cov.predictions_total ?? '—', sub: 'all time', cls: 'neutral' },
+    { label: 'Observations', value: cov.observations ?? '—', sub: '°F, for σ/bias', cls: 'neutral' },
+    { label: 'Kalshi Settlements', value: cov.kalshi_resolutions ?? '—', sub: 'drive skill', cls: 'neutral' },
+    ...(cov.lead_buckets || []).map(b => (
+      { label: `Lead ${b.bucket}`, value: b.n, sub: 'predictions', cls: 'neutral' }
+    )),
+  ].map(card).join('');
+}
+
+function show(tableId, emptyId, hasRows) {
+  document.getElementById(tableId).style.display = hasRows ? '' : 'none';
+  document.getElementById(emptyId).style.display = hasRows ? 'none' : 'block';
+}
+
+function renderStations(rows) {
+  show('stations-table', 'stations-empty', rows.length > 0);
+  document.getElementById('stations-body').innerHTML = rows.map(r => {
+    const src = Object.entries(r.sources || {})
+      .map(([k, v]) => `${k.replace('_ens', '')} ${v.toFixed(1)}`).join(' · ');
+    // Sources describing the same place agree closely. A wide gap is the
+    // signature that caught KLAX, so it is coloured rather than just printed.
+    const sp = r.source_spread;
+    const spCls = sp == null ? 'dim' : (sp >= 5 ? 'bad' : sp >= 3 ? 'warn' : 'dim');
+    const dv = r.divergence;
+    return `<tr>
+      <td style="font-weight:500">${r.city || r.station}</td>
+      <td class="dim">${(r.target_date || '?').replace('2026-', '')}</td>
+      <td class="num" style="color:var(--cyan);font-weight:600">${r.mu != null ? r.mu.toFixed(1) : '—'}</td>
+      <td class="num dim">${r.sigma != null ? r.sigma.toFixed(2) : '—'}</td>
+      <td class="num dim">${r.lead_hours != null ? r.lead_hours.toFixed(0) + 'h' : '—'}</td>
+      <td class="dim" style="font-size:12px">${src || '—'}</td>
+      <td class="num ${spCls}" style="font-weight:600">${sp != null ? sp.toFixed(1) : '—'}</td>
+      <td class="num">${dv != null ? dv.toFixed(3) : '—'}</td>
+      <td class="num ${r.n_take ? 'ok' : 'dim'}">${r.n_take}/${r.n_markets}</td>
+      <td class="num dim">${r.best_edge != null ? r.best_edge.toFixed(3) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderDecisions(rows, total) {
+  const has = rows.length > 0 && total > 0;
+  document.getElementById('decisions').style.display = has ? 'grid' : 'none';
+  document.getElementById('decisions-empty').style.display = has ? 'none' : 'block';
+  if (!has) return;
+  const max = Math.max(...rows.map(r => r.n));
+  document.getElementById('decisions').innerHTML = rows.map(r => `
+    <div class="${r.reason === 'take' ? 'ok' : 'dim'}" style="font-size:12px">${r.reason}</div>
+    <div class="track"><div class="fill ${r.reason === 'take' ? 'take' : ''}" style="width:${(r.n / max * 100).toFixed(1)}%"></div></div>
+    <div class="num dim">${r.n} · ${(r.n / total * 100).toFixed(0)}%</div>
+  `).join('');
+}
+
+function renderAccuracy(rows) {
+  show('accuracy-table', 'accuracy-empty', rows.length > 0);
+  document.getElementById('accuracy-body').innerHTML = rows.map(r => {
+    // A degree or two is representativeness; beyond that the model is likely
+    // reading a different place than the settlement station.
+    const a = Math.abs(r.bias);
+    const cls = a >= 5 ? 'bad' : a >= 3 ? 'warn' : 'ok';
+    return `<tr>
+      <td style="font-weight:500">${r.station}</td>
+      <td class="dim" style="font-size:12px">${r.source.replace('_ens', '')}</td>
+      <td class="num ${cls}" style="font-weight:600">${r.bias >= 0 ? '+' : ''}${r.bias.toFixed(2)}</td>
+      <td class="num dim">${r.mae.toFixed(2)}</td>
+      <td class="num dim">${r.n}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderBook(data) {
   // Positions table
   const positions = data.positions || [];
   const active = positions.filter(p => !p.settled);
