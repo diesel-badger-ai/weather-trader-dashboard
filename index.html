@@ -222,8 +222,8 @@ function render(data) {
   // Metrics
     const s = data.summary || {};
     document.getElementById('metrics').innerHTML = [
-    { label: 'Total Invested', value: '$' + (s.total_invested || 0).toFixed(2), sub: 'capital deployed', cls: 'neutral' },
-    { label: 'Total Cost', value: '$' + (s.total_cost || 0).toFixed(2), sub: 'incl. fees', cls: 'neutral' },
+    { label: 'Deployed Capital', value: '$' + (s.total_invested || 0).toFixed(2), sub: 'active positions', cls: 'neutral' },
+    { label: 'Deployed Cost', value: '$' + (s.total_cost || 0).toFixed(2), sub: 'active incl. fees', cls: 'neutral' },
     { label: 'Total Orders', value: s.total_orders || 0, sub: 'hypothetical', cls: 'neutral' },
     { label: 'Realized P&L', value: '$' + (s.total_pnl_usd || 0).toFixed(2), sub: 'settled', cls: (s.total_pnl_usd || 0) >= 0 ? 'positive' : 'negative' },
     { label: 'Win Rate', value: s.win_rate ? (s.win_rate * 100).toFixed(1) + '%' : '—', sub: 'settled trades', cls: 'neutral' },
