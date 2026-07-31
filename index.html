@@ -230,6 +230,9 @@
         or two is representativeness; a persistent 5&deg;F+ means the model is
         reading a different place than the one Kalshi settles on. This is the
         table that makes a mis-placed grid cell obvious in days rather than months.
+        Rows marked <strong>retired</strong> are sources that station no longer
+        blends &mdash; kept because the record is why the swap happened. Their
+        sample count should stay frozen.
       </p>
       <div class="scroll-x">
         <table id="accuracy-table">
@@ -489,10 +492,18 @@ function renderAccuracy(rows) {
     // A degree or two is representativeness; beyond that the model is likely
     // reading a different place than the settlement station.
     const a = Math.abs(r.bias);
-    const cls = a >= 5 ? 'bad' : a >= 3 ? 'warn' : 'ok';
-    return `<tr>
+    // A source this station no longer blends is history, not a live reading.
+    // Its rows stay because the record is evidence — KLAX/ECMWF is why the
+    // swap happened — but scoring a retired model in the same weight as a
+    // live one invites reading it as still in use. Its `n` should be frozen.
+    const retired = r.active === false;
+    const cls = retired ? 'dim' : (a >= 5 ? 'bad' : a >= 3 ? 'warn' : 'ok');
+    const tag = retired
+      ? ' <span class="badge settled" title="No longer blended for this station — kept as history">retired</span>'
+      : '';
+    return `<tr${retired ? ' style="opacity:.55"' : ''}>
       <td style="font-weight:500">${r.station}</td>
-      <td class="dim" style="font-size:12px">${r.source.replace('_ens', '')}</td>
+      <td class="dim" style="font-size:12px">${r.source.replace('_ens', '')}${tag}</td>
       <td class="num ${cls}" style="font-weight:600">${r.bias >= 0 ? '+' : ''}${r.bias.toFixed(2)}</td>
       <td class="num dim">${r.mae.toFixed(2)}</td>
       <td class="num dim">${r.n}</td>
