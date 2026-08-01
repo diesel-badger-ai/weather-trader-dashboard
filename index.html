@@ -196,10 +196,13 @@
   <!-- What failed. A degraded status with no reason attached is barely better
        than no status at all — the reasons used to go only to stderr. -->
   <div class="section" id="failures-section" hidden>
-    <h2 class="bad">Cycle failures</h2>
+    <h2 class="bad" id="failures-heading">Cycle failures</h2>
     <p class="note">
-      These steps did not complete this run. The rest of the cycle continued, so
-      the numbers below are from a partial cycle.
+      Steps that did not complete this run. Entries in red changed what the model
+      saw or did, and mark the cycle degraded. Entries tagged
+      <strong>unused source</strong> are upstreams that failed without touching a
+      forecast, probability or order &mdash; METAR is fetched and stored but not
+      consumed by the blend, so a failure there leaves the cycle intact.
     </p>
     <ul id="failures"></ul>
   </div>
@@ -469,14 +472,24 @@ function render(data) {
       cls: data.status === 'ok' ? 'positive' : 'negative' },
   ].map(card).join('');
 
+  // Failures changed what the model saw or did. Advisories are upstreams that
+  // failed without touching a forecast, probability or order — shown so the
+  // record survives, kept out of the red heading so "degraded" keeps meaning
+  // something.
   const failures = data.failures || [];
+  const advisories = data.advisories || [];
   const fsec = document.getElementById('failures-section');
-  fsec.hidden = failures.length === 0;
-  const shown = failures.length;
-  const total = data.failure_count != null ? data.failure_count : shown;
+  fsec.hidden = failures.length === 0 && advisories.length === 0;
+  const more = (list, total) => (total > list.length)
+    ? `<li class="dim">…and ${total - list.length} more</li>` : '';
+  document.getElementById('failures-heading').className = failures.length ? 'bad' : 'dim';
+  document.getElementById('failures-heading').textContent =
+    failures.length ? 'Cycle failures' : 'Advisories';
   document.getElementById('failures').innerHTML =
-    failures.map(f => `<li class="dim">${f}</li>`).join('') +
-    (total > shown ? `<li class="dim">…and ${total - shown} more</li>` : '');
+    failures.map(f => `<li class="bad">${f}</li>`).join('') +
+    more(failures, data.failure_count != null ? data.failure_count : failures.length) +
+    advisories.map(a => `<li class="dim">${a} <span class="badge settled">unused source</span></li>`).join('') +
+    more(advisories, data.advisory_count != null ? data.advisory_count : advisories.length);
 
   renderAccuracy(m.forecast_accuracy || []);
   renderStations(m.stations || []);
